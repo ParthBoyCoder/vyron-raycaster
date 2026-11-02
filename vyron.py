@@ -20,6 +20,7 @@ import pygame
 from pygame.math import Vector2
 
 import main
+from vyron_brain import BrainAction, Movement, VyronBrain
 
 
 WINDOW_WIDTH = 1_360
@@ -45,6 +46,7 @@ HIT = (255, 142, 70)
 PLAYER_VIEW_WIDTH = 900
 PLAYER_VIEW_HEIGHT = 580
 PLAYER_VIEW_NAME = "VYRON // LIVE PLAYER VIEW"
+AUTONOMOUS_ACTION_INTERVAL = 0.1
 
 
 def world_to_screen(position: Vector2) -> Vector2:
@@ -285,7 +287,29 @@ def render_player_view(player: main.Player) -> np.ndarray:
     return frame
 
 
-def run(max_frames: Optional[int] = None, show_opencv: bool = True) -> None:
+def apply_brain_action(player: main.Player, action: BrainAction, delta_time: float) -> None:
+    """Apply one validated brain action using the same movement rules as input."""
+    movement = Vector2()
+    if action.movement == Movement.FORWARD:
+        movement += player.direction
+    elif action.movement == Movement.BACKWARD:
+        movement -= player.direction
+    elif action.movement == Movement.LEFT:
+        movement += Vector2(player.direction.y, -player.direction.x)
+    elif action.movement == Movement.RIGHT:
+        movement += Vector2(-player.direction.y, player.direction.x)
+
+    if movement.length_squared() > 1:
+        movement.scale_to_length(1)
+    player.move(movement * main.MOVE_SPEED, delta_time)
+    player.angle = (player.angle + action.rotation * main.ROTATE_SPEED * delta_time) % math.tau
+
+
+def run(
+    max_frames: Optional[int] = None,
+    show_opencv: bool = True,
+    autonomous: bool = False,
+) -> None:
     pygame.init()
     pygame.display.set_caption("RayCast - Developer Visualizer")
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -293,6 +317,8 @@ def run(max_frames: Optional[int] = None, show_opencv: bool = True) -> None:
     font = pygame.font.Font(None, 22)
     small_font = pygame.font.Font(None, 19)
     player = main.Player()
+    brain = VyronBrain()
+    next_brain_update = 0.0
     pygame.mouse.set_visible(False)
     pygame.event.set_grab(True)
     if show_opencv:
@@ -315,20 +341,29 @@ def run(max_frames: Optional[int] = None, show_opencv: bool = True) -> None:
             elif event.type == pygame.MOUSEMOTION and pygame.mouse.get_focused():
                 player.angle = (player.angle + event.rel[0] * main.MOUSE_SENSITIVITY) % math.tau
 
-        keys = pygame.key.get_pressed()
-        movement = player.direction * (float(keys[pygame.K_w]) - float(keys[pygame.K_s]))
-        movement += Vector2(-player.direction.y, player.direction.x) * (
-            float(keys[pygame.K_d]) - float(keys[pygame.K_a])
-        )
-        if movement.length_squared() > 1:
-            movement.scale_to_length(1)
-        player.move(movement * main.MOVE_SPEED, delta_time)
-        player.angle = (
-            player.angle
-            + (float(keys[pygame.K_RIGHT]) - float(keys[pygame.K_LEFT]))
-            * main.ROTATE_SPEED
-            * delta_time
-        ) % math.tau
+        if autonomous:
+            next_brain_update -= delta_time
+            if next_brain_update <= 0:
+                action = brain.observe(render_player_view(player))
+                next_brain_update = AUTONOMOUS_ACTION_INTERVAL
+            else:
+                action = brain.last_action
+            apply_brain_action(player, action, delta_time)
+        else:
+            keys = pygame.key.get_pressed()
+            movement = player.direction * (float(keys[pygame.K_w]) - float(keys[pygame.K_s]))
+            movement += Vector2(-player.direction.y, player.direction.x) * (
+                float(keys[pygame.K_d]) - float(keys[pygame.K_a])
+            )
+            if movement.length_squared() > 1:
+                movement.scale_to_length(1)
+            player.move(movement * main.MOVE_SPEED, delta_time)
+            player.angle = (
+                player.angle
+                + (float(keys[pygame.K_RIGHT]) - float(keys[pygame.K_LEFT]))
+                * main.ROTATE_SPEED
+                * delta_time
+            ) % math.tau
 
         screen.fill(BACKGROUND)
         draw_world_grid(screen, small_font)
@@ -356,5 +391,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames", type=int, help="exit after this many frames")
     parser.add_argument("--no-opencv", action="store_true", help="disable the live OpenCV player window")
+    parser.add_argument("--autonomous", action="store_true", help="run through the autonomous brain interface")
     arguments = parser.parse_args()
-    run(arguments.frames, show_opencv=not arguments.no_opencv)
+    run(arguments.frames, show_opencv=not arguments.no_opencv, autonomous=arguments.autonomous)
