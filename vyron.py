@@ -14,6 +14,8 @@ import argparse
 import math
 from typing import Optional
 
+import cv2
+import numpy as np
 import pygame
 from pygame.math import Vector2
 
@@ -40,6 +42,9 @@ RAY = (246, 193, 81)
 TRACE = (255, 104, 100)
 PLAYER = (96, 220, 147)
 HIT = (255, 142, 70)
+PLAYER_VIEW_WIDTH = 900
+PLAYER_VIEW_HEIGHT = 580
+PLAYER_VIEW_NAME = "VYRON // LIVE PLAYER VIEW"
 
 
 def world_to_screen(position: Vector2) -> Vector2:
@@ -229,7 +234,58 @@ def draw_info(
         y += 18
 
 
-def run(max_frames: Optional[int] = None) -> None:
+def render_player_view(player: main.Player) -> np.ndarray:
+    """Build the live first-person view as an OpenCV BGR frame."""
+    frame = np.zeros((PLAYER_VIEW_HEIGHT, PLAYER_VIEW_WIDTH, 3), dtype=np.uint8)
+    horizon = PLAYER_VIEW_HEIGHT // 2
+    frame[:horizon] = (76, 48, 31)
+    frame[horizon:] = (42, 42, 49)
+
+    ray_width = PLAYER_VIEW_WIDTH / main.NUM_RAYS
+    for ray_index in range(main.NUM_RAYS):
+        screen_x = (ray_index + 0.5) * ray_width
+        ray_angle = player.angle - main.FOV / 2 + main.FOV * screen_x / PLAYER_VIEW_WIDTH
+        distance, side, texture_coordinate = main.cast_ray(player.position, ray_angle)
+        corrected_distance = distance * math.cos(ray_angle - player.angle)
+        wall_height = min(PLAYER_VIEW_HEIGHT * 2, PLAYER_VIEW_HEIGHT / max(corrected_distance, 0.001))
+        top = max(0, int(horizon - wall_height / 2))
+        bottom = min(PLAYER_VIEW_HEIGHT, int(horizon + wall_height / 2))
+        color = main.wall_color(corrected_distance, side, texture_coordinate)
+        bgr = (color[2], color[1], color[0])
+        cv2.rectangle(
+            frame,
+            (int(ray_index * ray_width), top),
+            (int((ray_index + 1) * ray_width), bottom),
+            bgr,
+            -1,
+        )
+
+    cv2.line(frame, (PLAYER_VIEW_WIDTH // 2 - 9, horizon), (PLAYER_VIEW_WIDTH // 2 + 9, horizon), (235, 239, 230), 1)
+    cv2.line(frame, (PLAYER_VIEW_WIDTH // 2, horizon - 9), (PLAYER_VIEW_WIDTH // 2, horizon + 9), (235, 239, 230), 1)
+    cv2.putText(
+        frame,
+        "LIVE PLAYER VIEW // RAYCAST OUTPUT",
+        (18, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (235, 239, 230),
+        1,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        frame,
+        f"pos ({player.position.x:.2f}, {player.position.y:.2f})  angle {math.degrees(player.angle):.1f} deg",
+        (18, PLAYER_VIEW_HEIGHT - 18),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (81, 183, 241),
+        1,
+        cv2.LINE_AA,
+    )
+    return frame
+
+
+def run(max_frames: Optional[int] = None, show_opencv: bool = True) -> None:
     pygame.init()
     pygame.display.set_caption("RayCast - Developer Visualizer")
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -239,6 +295,9 @@ def run(max_frames: Optional[int] = None) -> None:
     player = main.Player()
     pygame.mouse.set_visible(False)
     pygame.event.set_grab(True)
+    if show_opencv:
+        cv2.namedWindow(PLAYER_VIEW_NAME, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(PLAYER_VIEW_NAME, PLAYER_VIEW_WIDTH, PLAYER_VIEW_HEIGHT)
 
     show_info = True
     running = True
@@ -281,13 +340,21 @@ def run(max_frames: Optional[int] = None) -> None:
         else:
             draw_text(screen, font, "F1: show developer information", (760, 40), RAY)
         pygame.display.flip()
+        if show_opencv:
+            cv2.imshow(PLAYER_VIEW_NAME, render_player_view(player))
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                running = False
         frame_count += 1
 
     pygame.event.set_grab(False)
+    if show_opencv:
+        cv2.destroyAllWindows()
     pygame.quit()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames", type=int, help="exit after this many frames")
-    run(parser.parse_args().frames)
+    parser.add_argument("--no-opencv", action="store_true", help="disable the live OpenCV player window")
+    arguments = parser.parse_args()
+    run(arguments.frames, show_opencv=not arguments.no_opencv)
