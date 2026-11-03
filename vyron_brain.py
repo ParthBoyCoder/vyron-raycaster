@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -62,7 +63,7 @@ class BrainAction:
 
 
 MAX_FRAME_BYTES: Final = 8_000_000
-GEMINI_API_KEY: Final[str] = "YOUR_GEMINI_API_KEY"
+GEMINI_API_KEY: Final[str | None] = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL: Final[str] = "gemini-2.0-flash-live-001"
 FRAME_INTERVAL_SECONDS: Final[float] = 1.0
 ACTION_PROMPT: Final[str] = (
@@ -147,8 +148,8 @@ class VyronBrain:
             logger.error("Gemini Live requires the google-genai package")
             return
 
-        if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-            logger.error("Set GEMINI_API_KEY in vyron_brain.py before autonomous mode")
+        if not GEMINI_API_KEY:
+            logger.error("Set the GEMINI_API_KEY environment variable before autonomous mode")
             return
 
         asyncio.run(self._live_session(genai, types))
