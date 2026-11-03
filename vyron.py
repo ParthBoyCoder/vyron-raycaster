@@ -382,6 +382,7 @@ def run(
         frame_count += 1
 
     pygame.event.set_grab(False)
+    brain.close()
     if show_opencv:
         cv2.destroyAllWindows()
     pygame.quit()

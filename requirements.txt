@@ -1,0 +1,4 @@
+google-genai>=1.0.0
+numpy>=2.0.0
+opencv-python>=4.10.0
+pygame>=2.6.0
