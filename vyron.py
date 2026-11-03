@@ -11,6 +11,7 @@ projection measurements, and live player/ray statistics.
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 from typing import Optional
 
@@ -47,6 +48,7 @@ PLAYER_VIEW_WIDTH = 900
 PLAYER_VIEW_HEIGHT = 580
 PLAYER_VIEW_NAME = "VYRON // LIVE PLAYER VIEW"
 AUTONOMOUS_ACTION_INTERVAL = 0.1
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
 def world_to_screen(position: Vector2) -> Vector2:
