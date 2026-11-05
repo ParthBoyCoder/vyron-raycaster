@@ -256,10 +256,11 @@ class VyronBrain:
                 raise RuntimeError("GEMINI_API_KEY is not set")
             client = genai.Client(api_key=api_key)
             config = {
-                "response_modalities": ["TEXT"],
+                "response_modalities": ["AUDIO"],
+                "output_audio_transcription": {},
                 "system_instruction": (
                     "You control a first-person ray-casting game. Avoid walls and "
-                    "make small, safe movements. Respond only with the requested JSON."
+                    "speak only the requested JSON object, with no markdown or explanation."
                 ),
             }
             async with client.aio.live.connect(model=GEMINI_MODEL, config=config) as session:
@@ -293,10 +294,10 @@ class VyronBrain:
         response_text = ""
         async for response in session.receive():
             content = getattr(response, "server_content", None)
-            if content and content.model_turn:
-                for part in content.model_turn.parts:
-                    if part.text:
-                        response_text += part.text
+            if content:
+                transcription = getattr(content, "output_transcription", None)
+                if transcription and transcription.text:
+                    response_text += transcription.text
             if content and content.turn_complete and response_text:
                 self._apply_response_text(response_text)
                 response_text = ""
